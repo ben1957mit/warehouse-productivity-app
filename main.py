@@ -39,30 +39,55 @@ if uploaded_file is not None:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Create fatigue score
+    # -----------------------------
+    # ⭐ FATIGUE MODULE STARTS HERE
+    # -----------------------------
+
+    # Create fatigue score (0 = fresh, 100 = exhausted)
     df["fatigue_score"] = (
         (df["cycle_time"] / df["cycle_time"].max()) * 60
         + (1 - (df["units"] / df["units"].max())) * 40
     )
 
-    # Display dataset
-    st.subheader("Raw Dataset")
+    # Create fatigue zones
+    def fatigue_zone(score):
+        if score <= 20:
+            return "Fresh (Green)"
+        elif score <= 40:
+            return "Warming Up (Light Green)"
+        elif score <= 60:
+            return "Noticeable Fatigue (Yellow)"
+        elif score <= 80:
+            return "High Fatigue (Orange)"
+        else:
+            return "Critical Fatigue (Red)"
+
+    df["fatigue_zone"] = df["fatigue_score"].apply(fatigue_zone)
+
+    # -----------------------------
+    # ⭐ DISPLAY SECTION
+    # -----------------------------
+
+    st.subheader("Raw Dataset With Fatigue Score")
     st.dataframe(df, use_container_width=True)
 
-    # Summary stats
     st.subheader("Summary Statistics")
     st.write(df.describe())
 
-    # Preview
     st.subheader("Preview (first 10 rows)")
     st.write(df.head(10))
 
-    # Fatigue trend chart
+    # ⭐ Fatigue Trend Chart
     st.subheader("Fatigue Trend Over Time")
     fatigue_chart = df[["timestamp", "fatigue_score"]].set_index("timestamp")
     st.line_chart(fatigue_chart)
 
-    # Daily fatigue averages
+    # ⭐ Daily Fatigue Averages
     st.subheader("Daily Fatigue Averages")
     daily_fatigue = df.groupby(df["timestamp"].dt.date)["fatigue_score"].mean()
     st.bar_chart(daily_fatigue)
+
+    # ⭐ Fatigue Zone Table
+    st.subheader("Fatigue Zones (Color‑Coded Interpretation)")
+    zone_table = df[["timestamp", "units", "cycle_time", "fatigue_score", "fatigue_zone"]]
+    st.dataframe(zone_table, use_container_width=True)
