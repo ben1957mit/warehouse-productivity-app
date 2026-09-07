@@ -39,7 +39,13 @@ if uploaded_file is not None:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Show dataset
+    # Create fatigue score
+    df["fatigue_score"] = (
+        (df["cycle_time"] / df["cycle_time"].max()) * 60
+        + (1 - (df["units"] / df["units"].max())) * 40
+    )
+
+    # Display dataset
     st.subheader("Raw Dataset")
     st.dataframe(df, use_container_width=True)
 
@@ -50,3 +56,13 @@ if uploaded_file is not None:
     # Preview
     st.subheader("Preview (first 10 rows)")
     st.write(df.head(10))
+
+    # Fatigue trend chart
+    st.subheader("Fatigue Trend Over Time")
+    fatigue_chart = df[["timestamp", "fatigue_score"]].set_index("timestamp")
+    st.line_chart(fatigue_chart)
+
+    # Daily fatigue averages
+    st.subheader("Daily Fatigue Averages")
+    daily_fatigue = df.groupby(df["timestamp"].dt.date)["fatigue_score"].mean()
+    st.bar_chart(daily_fatigue)
