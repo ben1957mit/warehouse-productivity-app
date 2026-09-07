@@ -1,6 +1,58 @@
 import streamlit as st
 import pandas as pd
 
+# -----------------------------
+# COLOR PALETTE
+# -----------------------------
+GREEN = "#2ECC71"
+LIGHT_GREEN = "#A3E4D7"
+YELLOW = "#F1C40F"
+ORANGE = "#E67E22"
+RED = "#E74C3C"
+
+# -----------------------------
+# COLOR HELPERS
+# -----------------------------
+def colored_alert(message, color):
+    st.markdown(
+        f"""
+        <div style="
+            background-color:{color};
+            padding:12px;
+            border-radius:6px;
+            color:white;
+            font-weight:bold;
+            margin-bottom:10px;">
+            {message}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+def fatigue_badge(zone):
+    color_map = {
+        "Fresh (Green)": GREEN,
+        "Warming Up (Light Green)": LIGHT_GREEN,
+        "Noticeable Fatigue (Yellow)": YELLOW,
+        "High Fatigue (Orange)": ORANGE,
+        "Critical Fatigue (Red)": RED
+    }
+    color = color_map.get(zone, "#95A5A6")
+    return f"<span style='background:{color}; padding:4px 8px; border-radius:4px; color:white;'>{zone}</span>"
+
+def kpi_bar(label, value, color):
+    st.markdown(
+        f"""
+        <div style="padding:10px; border-radius:6px; background:{color}; color:white; margin-bottom:10px;">
+            <strong>{label}:</strong> {value}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# -----------------------------
+# STREAMLIT PAGE CONFIG
+# -----------------------------
 st.set_page_config(page_title="Warehouse Productivity Dashboard", layout="wide")
 
 st.title("Warehouse Productivity Dashboard")
@@ -14,21 +66,20 @@ if uploaded_file is not None:
     # SAFE CSV LOADING & CLEANUP
     # -----------------------------
     df = pd.read_csv(uploaded_file, dtype=str)
-
     df.columns = df.columns.str.strip().str.lower()
 
     if "ï»¿timestamp" in df.columns:
         df.rename(columns={"ï»¿timestamp": "timestamp"}, inplace=True)
 
     if "timestamp" not in df.columns:
-        st.error("Your CSV is missing a 'timestamp' column. Please check your header row.")
+        colored_alert("ERROR: Your CSV is missing a 'timestamp' column.", RED)
         st.stop()
 
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
 
     bad_rows = df[df["timestamp"].isna()]
     if len(bad_rows) > 0:
-        st.warning(f"{len(bad_rows)} rows had invalid timestamps and were skipped.")
+        colored_alert(f"{len(bad_rows)} rows had invalid timestamps and were skipped.", ORANGE)
 
     numeric_cols = ["units", "lines", "workers", "errors", "cycle_time"]
     for col in numeric_cols:
@@ -38,12 +89,11 @@ if uploaded_file is not None:
     # -----------------------------
     # TIGHTENED FATIGUE ENGINE
     # -----------------------------
-    # 50% cycle time, 30% units, 15% errors, 5% staffing
     df["fatigue_score"] = (
-        (df["cycle_time"] / df["cycle_time"].max()) * 50
-        + (1 - (df["units"] / df["units"].max())) * 30
-        + (df["errors"] / df["errors"].max()) * 15
-        + (1 - (df["workers"] / df["workers"].max())) * 5
+        (df["cycle_time"] / df["cycle_time"].max()) * 50 +
+        (1 - (df["units"] / df["units"].max())) * 30 +
+        (df["errors"] / df["errors"].max()) * 15 +
+        (1 - (df["workers"] / df["workers"].max())) * 5
     )
 
     def fatigue_zone(score):
@@ -61,7 +111,7 @@ if uploaded_file is not None:
     df["fatigue_zone"] = df["fatigue_score"].apply(fatigue_zone)
 
     # -----------------------------
-    # FATIGUE KPIs
+    # FATIGUE KPIs (COLORIZED)
     # -----------------------------
     avg_fatigue = df["fatigue_score"].mean()
     peak_fatigue = df["fatigue_score"].max()
@@ -70,102 +120,103 @@ if uploaded_file is not None:
 
     if avg_fatigue < 30:
         fatigue_risk = "Low"
+        risk_color = GREEN
     elif avg_fatigue < 60:
         fatigue_risk = "Moderate"
+        risk_color = YELLOW
     else:
         fatigue_risk = "High"
+        risk_color = RED
 
     st.subheader("Fatigue KPIs")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Average Fatigue", f"{avg_fatigue:.1f}")
-    with col2:
-        st.metric("Peak Fatigue", f"{peak_fatigue:.1f}")
-    with col3:
-        st.metric("Minimum Fatigue", f"{min_fatigue:.1f}")
 
-    col4, col5 = st.columns(2)
-    with col4:
-        st.metric("Fatigue Stability (Std Dev)", f"{fatigue_stability:.1f}")
-    with col5:
-        st.metric("Fatigue Risk Level", fatigue_risk)
+    kpi_bar("Average Fatigue", f"{avg_fatigue:.1f}", risk_color)
+    kpi_bar("Peak Fatigue", f"{peak_fatigue:.1f}", RED if peak_fatigue > 85 else ORANGE)
+    kpi_bar("Minimum Fatigue", f"{min_fatigue:.1f}", GREEN if min_fatigue < 20 else LIGHT_GREEN)
+    kpi_bar("Fatigue Stability (Std Dev)", f"{fatigue_stability:.1f}", YELLOW if fatigue_stability > 20 else GREEN)
 
     # -----------------------------
-    # RECOMMENDED ACTION ENGINE
+    # RECOMMENDED ACTION ENGINE (COLORIZED)
     # -----------------------------
     if avg_fatigue < 30:
         action = "Shift is performing well. Maintain current workflow."
+        action_color = GREEN
     elif avg_fatigue < 50:
         action = "Monitor mid-shift slowdown. Consider micro-breaks or rotation."
+        action_color = LIGHT_GREEN
     elif avg_fatigue < 70:
         action = "Fatigue rising. Add relief workers or redistribute tasks."
+        action_color = ORANGE
     else:
         action = "Critical fatigue. Immediate rotation or break required."
+        action_color = RED
 
     if peak_fatigue > 85:
         action += " Peak fatigue is dangerously high — intervene now."
+        action_color = RED
+
     if fatigue_stability > 20:
-        action += " Fatigue instability detected — workers are fluctuating heavily."
+        action += " Fatigue instability detected — workers fluctuating heavily."
+        action_color = ORANGE
 
     st.subheader("Recommended Action")
-    st.write(action)
+    colored_alert(action, action_color)
 
     # -----------------------------
-    # FATIGUE ALERTS (AUTO-WARNINGS)
+    # FATIGUE ALERTS (COLORIZED)
     # -----------------------------
     st.subheader("Fatigue Alerts")
 
     if peak_fatigue > 85:
-        st.error("⚠️ Critical fatigue detected! Consider rotation or relief.")
+        colored_alert("CRITICAL FATIGUE — Immediate rotation required.", RED)
+
     if avg_fatigue > 60:
-        st.warning("⚠️ High average fatigue. Productivity decline likely.")
+        colored_alert("High average fatigue — productivity decline likely.", ORANGE)
+
     if fatigue_stability > 20:
-        st.warning("⚠️ Fatigue instability detected. Workers are fluctuating heavily.")
+        colored_alert("Fatigue instability — workers fluctuating heavily.", YELLOW)
+
     if min_fatigue < 15:
-        st.info("ℹ️ Fresh productivity detected early in the shift.")
+        colored_alert("Fresh productivity detected early in shift.", GREEN)
 
     # -----------------------------
-    # BREAK / LUNCH MARKERS
+    # BREAK / LUNCH MARKERS (COLORIZED)
     # -----------------------------
     st.subheader("Break & Lunch Markers")
 
     if "task_type" in df.columns:
-        break_times = df[df["task_type"].str.contains("break", na=False)]
-        lunch_times = df[df["task_type"].str.contains("lunch", na=False)]
+        df["event_color"] = df["task_type"].apply(
+            lambda x: YELLOW if "lunch" in x.lower()
+            else LIGHT_GREEN if "break" in x.lower()
+            else "transparent"
+        )
 
-        st.write("Break Events:")
-        st.dataframe(break_times[["timestamp", "task_type", "fatigue_score"]])
+        events = df[df["event_color"] != "transparent"]
 
-        st.write("Lunch Events:")
-        st.dataframe(lunch_times[["timestamp", "task_type", "fatigue_score"]])
+        for _, row in events.iterrows():
+            colored_alert(f"{row['timestamp']} — {row['task_type']}", row["event_color"])
     else:
-        st.info("ℹ️ No 'task_type' column found. Add it to track breaks and lunch.")
+        colored_alert("No 'task_type' column found. Add it to track breaks and lunch.", ORANGE)
 
     # -----------------------------
-    # MULTI-SHIFT FATIGUE COMPARISON
+    # MULTI-SHIFT FATIGUE COMPARISON (COLORIZED)
     # -----------------------------
     if "shift" in df.columns:
         st.subheader("Multi-Shift Fatigue Comparison")
 
         shift_fatigue = df.groupby("shift")["fatigue_score"].mean()
-        st.bar_chart(shift_fatigue)
 
-        st.write("Shift Fatigue Averages:")
-        st.write(shift_fatigue)
+        for shift, score in shift_fatigue.items():
+            color = GREEN if score < 30 else YELLOW if score < 60 else RED
+            colored_alert(f"Shift {shift}: {score:.1f}", color)
     else:
-        st.info("ℹ️ No 'shift' column found. Add a shift column to enable multi-shift comparison.")
+        colored_alert("No 'shift' column found. Add a shift column to enable multi-shift comparison.", ORANGE)
 
     # -----------------------------
-    # CORE DATA & FATIGUE VISUALS
+    # CORE DATA & VISUALS
     # -----------------------------
     st.subheader("Raw Dataset With Fatigue")
     st.dataframe(df, use_container_width=True)
-
-    st.subheader("Summary Statistics")
-    st.write(df.describe())
-
-    st.subheader("Preview (first 10 rows)")
-    st.write(df.head(10))
 
     st.subheader("Fatigue Trend Over Time")
     fatigue_chart = df[["timestamp", "fatigue_score"]].set_index("timestamp")
@@ -177,7 +228,5 @@ if uploaded_file is not None:
 
     st.subheader("Fatigue Zones Table")
     zone_table = df[["timestamp", "units", "cycle_time", "errors", "workers", "fatigue_score", "fatigue_zone"]]
-    st.dataframe(zone_table, use_container_width=True)
-
-
-    
+    zone_table["fatigue_zone"] = zone_table["fatigue_zone"].apply(fatigue_badge)
+    st.markdown(zone_table.to_html(escape=False), unsafe_allow_html=True)
