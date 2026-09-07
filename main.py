@@ -113,7 +113,7 @@ if uploaded_file is not None:
     df["fatigue_zone"] = df["fatigue_score"].apply(fatigue_zone)
 
     # -----------------------------
-    # PERFORMANCE + FATIGUE COMBINED KPI PANEL
+    # COMBINED PERFORMANCE & FATIGUE KPIs
     # -----------------------------
     st.subheader("Combined Performance & Fatigue KPIs")
 
@@ -174,7 +174,7 @@ if uploaded_file is not None:
         action_color = RED
 
     if fatigue_stability > 20:
-        action += " Fatigue instability detected — workers are fluctuating heavily."
+        action += " Fatigue instability detected — workers fluctuating heavily."
         action_color = ORANGE
 
     st.subheader("Recommended Action")
@@ -294,6 +294,82 @@ if uploaded_file is not None:
     )
 
     st.altair_chart(daily_chart, use_container_width=True)
+
+    # -----------------------------
+    # SUPERVISOR INTERPRETATION PANEL
+    # -----------------------------
+    st.subheader("Supervisor Interpretation Panel")
+
+    interpretation_text = """
+### How to Read This Dashboard
+
+**Fatigue Score (0–100)**  
+- 0–20: Fresh (Green)  
+- 21–40: Warming Up (Light Green)  
+- 41–60: Noticeable Fatigue (Yellow)  
+- 61–80: High Fatigue (Orange)  
+- 81–100: Critical (Red)  
+
+**What Supervisors Should Watch For:**  
+- Yellow → Orange → Red transitions  
+- Afternoon fatigue waves  
+- Pre‑lunch slump  
+- No recovery after breaks  
+- High fatigue + high errors = safety risk  
+- High fatigue + low units = productivity decline  
+"""
+
+    colored_alert("Supervisor Guide Loaded — Scroll down to read full interpretation.", LIGHT_GREEN)
+    st.markdown(interpretation_text)
+
+    # -----------------------------
+    # SAFETY RISK SCORING SYSTEM
+    # -----------------------------
+    st.subheader("Safety Risk Score")
+
+    df["safety_risk"] = (
+        (df["fatigue_score"] / 100) * 60 +
+        (df["errors"] / df["errors"].max()) * 30 +
+        (df["cycle_time"] / df["cycle_time"].max()) * 10
+    )
+
+    avg_risk = df["safety_risk"].mean()
+
+    if avg_risk < 25:
+        risk_label = "Low Risk"
+        risk_color = GREEN
+    elif avg_risk < 50:
+        risk_label = "Moderate Risk"
+        risk_color = YELLOW
+    elif avg_risk < 75:
+        risk_label = "High Risk"
+        risk_color = ORANGE
+    else:
+        risk_label = "Critical Risk"
+        risk_color = RED
+
+    kpi_bar("Safety Risk Score", f"{avg_risk:.1f}", risk_color)
+    colored_alert(f"Safety Status: {risk_label}", risk_color)
+
+    # -----------------------------
+    # PRODUCTIVITY VS FATIGUE CORRELATION
+    # -----------------------------
+    st.subheader("Productivity vs Fatigue Correlation")
+
+    corr_data = df[["units", "fatigue_score"]].dropna()
+
+    corr_chart = alt.Chart(corr_data).mark_circle(size=80).encode(
+        x=alt.X("fatigue_score:Q", title="Fatigue Score"),
+        y=alt.Y("units:Q", title="Units Output"),
+        color=alt.Color("fatigue_score:Q", scale=alt.Scale(scheme="redyellowgreen")),
+        tooltip=["units", "fatigue_score"]
+    ).properties(
+        width=700,
+        height=350,
+        title="Correlation Between Fatigue and Productivity"
+    )
+
+    st.altair_chart(corr_chart, use_container_width=True)
 
     # -----------------------------
     # RAW DATA + FATIGUE ZONES TABLE
