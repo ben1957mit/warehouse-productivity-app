@@ -36,11 +36,14 @@ if uploaded_file is not None:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # -----------------------------
-    # FATIGUE ENGINE
+    # TIGHTENED FATIGUE ENGINE
     # -----------------------------
+    # 50% cycle time, 30% units, 15% errors, 5% staffing
     df["fatigue_score"] = (
-        (df["cycle_time"] / df["cycle_time"].max()) * 60
-        + (1 - (df["units"] / df["units"].max())) * 40
+        (df["cycle_time"] / df["cycle_time"].max()) * 50
+        + (1 - (df["units"] / df["units"].max())) * 30
+        + (df["errors"] / df["errors"].max()) * 15
+        + (1 - (df["workers"] / df["workers"].max())) * 5
     )
 
     def fatigue_zone(score):
@@ -86,6 +89,26 @@ if uploaded_file is not None:
         st.metric("Fatigue Stability (Std Dev)", f"{fatigue_stability:.1f}")
     with col5:
         st.metric("Fatigue Risk Level", fatigue_risk)
+
+    # -----------------------------
+    # RECOMMENDED ACTION ENGINE
+    # -----------------------------
+    if avg_fatigue < 30:
+        action = "Shift is performing well. Maintain current workflow."
+    elif avg_fatigue < 50:
+        action = "Monitor mid-shift slowdown. Consider micro-breaks or rotation."
+    elif avg_fatigue < 70:
+        action = "Fatigue rising. Add relief workers or redistribute tasks."
+    else:
+        action = "Critical fatigue. Immediate rotation or break required."
+
+    if peak_fatigue > 85:
+        action += " Peak fatigue is dangerously high — intervene now."
+    if fatigue_stability > 20:
+        action += " Fatigue instability detected — workers are fluctuating heavily."
+
+    st.subheader("Recommended Action")
+    st.write(action)
 
     # -----------------------------
     # FATIGUE ALERTS (AUTO-WARNINGS)
@@ -153,5 +176,8 @@ if uploaded_file is not None:
     st.bar_chart(daily_fatigue)
 
     st.subheader("Fatigue Zones Table")
-    zone_table = df[["timestamp", "units", "cycle_time", "fatigue_score", "fatigue_zone"]]
+    zone_table = df[["timestamp", "units", "cycle_time", "errors", "workers", "fatigue_score", "fatigue_zone"]]
     st.dataframe(zone_table, use_container_width=True)
+
+
+    
