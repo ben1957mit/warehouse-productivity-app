@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 
 # -----------------------------
 # COLOR PALETTE
@@ -9,6 +10,7 @@ LIGHT_GREEN = "#A3E4D7"
 YELLOW = "#F1C40F"
 ORANGE = "#E67E22"
 RED = "#E74C3C"
+GREY = "#95A5A6"
 
 # -----------------------------
 # COLOR HELPERS
@@ -37,7 +39,7 @@ def fatigue_badge(zone):
         "High Fatigue (Orange)": ORANGE,
         "Critical Fatigue (Red)": RED
     }
-    color = color_map.get(zone, "#95A5A6")
+    color = color_map.get(zone, GREY)
     return f"<span style='background:{color}; padding:4px 8px; border-radius:4px; color:white;'>{zone}</span>"
 
 def kpi_bar(label, value, color):
@@ -111,8 +113,15 @@ if uploaded_file is not None:
     df["fatigue_zone"] = df["fatigue_score"].apply(fatigue_zone)
 
     # -----------------------------
-    # FATIGUE KPIs (COLORIZED)
+    # PERFORMANCE + FATIGUE COMBINED KPI PANEL
     # -----------------------------
+    st.subheader("Combined Performance & Fatigue KPIs")
+
+    avg_units = df["units"].mean() if "units" in df.columns else 0
+    avg_lines = df["lines"].mean() if "lines" in df.columns else 0
+    avg_errors = df["errors"].mean() if "errors" in df.columns else 0
+    avg_workers = df["workers"].mean() if "workers" in df.columns else 0
+
     avg_fatigue = df["fatigue_score"].mean()
     peak_fatigue = df["fatigue_score"].max()
     min_fatigue = df["fatigue_score"].min()
@@ -128,15 +137,24 @@ if uploaded_file is not None:
         fatigue_risk = "High"
         risk_color = RED
 
-    st.subheader("Fatigue KPIs")
+    col_perf1, col_perf2, col_perf3, col_perf4 = st.columns(4)
+    with col_perf1:
+        kpi_bar("Avg Units", f"{avg_units:.1f}", GREEN if avg_units > 0 else GREY)
+    with col_perf2:
+        kpi_bar("Avg Lines", f"{avg_lines:.1f}", LIGHT_GREEN if avg_lines > 0 else GREY)
+    with col_perf3:
+        kpi_bar("Avg Errors", f"{avg_errors:.1f}", RED if avg_errors > 0 else GREEN)
+    with col_perf4:
+        kpi_bar("Avg Workers", f"{avg_workers:.1f}", LIGHT_GREEN if avg_workers > 0 else GREY)
 
     kpi_bar("Average Fatigue", f"{avg_fatigue:.1f}", risk_color)
     kpi_bar("Peak Fatigue", f"{peak_fatigue:.1f}", RED if peak_fatigue > 85 else ORANGE)
     kpi_bar("Minimum Fatigue", f"{min_fatigue:.1f}", GREEN if min_fatigue < 20 else LIGHT_GREEN)
     kpi_bar("Fatigue Stability (Std Dev)", f"{fatigue_stability:.1f}", YELLOW if fatigue_stability > 20 else GREEN)
+    kpi_bar("Fatigue Risk Level", fatigue_risk, risk_color)
 
     # -----------------------------
-    # RECOMMENDED ACTION ENGINE (COLORIZED)
+    # RECOMMENDED ACTION ENGINE
     # -----------------------------
     if avg_fatigue < 30:
         action = "Shift is performing well. Maintain current workflow."
@@ -156,14 +174,14 @@ if uploaded_file is not None:
         action_color = RED
 
     if fatigue_stability > 20:
-        action += " Fatigue instability detected — workers fluctuating heavily."
+        action += " Fatigue instability detected — workers are fluctuating heavily."
         action_color = ORANGE
 
     st.subheader("Recommended Action")
     colored_alert(action, action_color)
 
     # -----------------------------
-    # FATIGUE ALERTS (COLORIZED)
+    # FATIGUE ALERTS
     # -----------------------------
     st.subheader("Fatigue Alerts")
 
@@ -180,7 +198,7 @@ if uploaded_file is not None:
         colored_alert("Fresh productivity detected early in shift.", GREEN)
 
     # -----------------------------
-    # BREAK / LUNCH MARKERS (COLORIZED)
+    # BREAK / LUNCH MARKERS
     # -----------------------------
     st.subheader("Break & Lunch Markers")
 
@@ -199,32 +217,89 @@ if uploaded_file is not None:
         colored_alert("No 'task_type' column found. Add it to track breaks and lunch.", ORANGE)
 
     # -----------------------------
-    # MULTI-SHIFT FATIGUE COMPARISON (COLORIZED)
+    # MULTI-SHIFT FATIGUE COMPARISON + HEATMAP
     # -----------------------------
-    if "shift" in df.columns:
-        st.subheader("Multi-Shift Fatigue Comparison")
+    st.subheader("Multi-Shift Fatigue Comparison")
 
+    if "shift" in df.columns:
         shift_fatigue = df.groupby("shift")["fatigue_score"].mean()
 
         for shift, score in shift_fatigue.items():
             color = GREEN if score < 30 else YELLOW if score < 60 else RED
             colored_alert(f"Shift {shift}: {score:.1f}", color)
+
+        # Heatmap: shift vs date
+        df["date"] = df["timestamp"].dt.date
+        heat_data = df.groupby(["shift", "date"])["fatigue_score"].mean().reset_index()
+
+        heatmap = alt.Chart(heat_data).mark_rect().encode(
+            x=alt.X("date:N", title="Date"),
+            y=alt.Y("shift:N", title="Shift"),
+            color=alt.Color("fatigue_score:Q", scale=alt.Scale(scheme="redyellowgreen"), title="Fatigue"),
+            tooltip=["shift", "date", "fatigue_score"]
+        ).properties(
+            width=600,
+            height=300,
+            title="Shift Fatigue Heatmap"
+        )
+
+        st.altair_chart(heatmap, use_container_width=True)
     else:
-        colored_alert("No 'shift' column found. Add a shift column to enable multi-shift comparison.", ORANGE)
+        colored_alert("No 'shift' column found. Add a shift column to enable multi-shift comparison and heatmap.", ORANGE)
 
     # -----------------------------
-    # CORE DATA & VISUALS
+    # COLORED FATIGUE LINE CHART ZONES
+    # -----------------------------
+    st.subheader("Fatigue Trend Over Time (Colored Zones)")
+
+    line_data = df[["timestamp", "fatigue_score", "fatigue_zone"]].dropna()
+
+    line_chart = alt.Chart(line_data).mark_line().encode(
+        x=alt.X("timestamp:T", title="Time"),
+        y=alt.Y("fatigue_score:Q", title="Fatigue Score"),
+        color=alt.Color("fatigue_zone:N",
+                        scale=alt.Scale(
+                            domain=[
+                                "Fresh (Green)",
+                                "Warming Up (Light Green)",
+                                "Noticeable Fatigue (Yellow)",
+                                "High Fatigue (Orange)",
+                                "Critical Fatigue (Red)"
+                            ],
+                            range=[GREEN, LIGHT_GREEN, YELLOW, ORANGE, RED]
+                        ),
+                        title="Fatigue Zone"),
+        tooltip=["timestamp", "fatigue_score", "fatigue_zone"]
+    ).properties(
+        width=800,
+        height=300
+    )
+
+    st.altair_chart(line_chart, use_container_width=True)
+
+    # -----------------------------
+    # DAILY FATIGUE AVERAGES
+    # -----------------------------
+    st.subheader("Daily Fatigue Averages")
+    daily_fatigue = df.groupby(df["timestamp"].dt.date)["fatigue_score"].mean().reset_index()
+    daily_fatigue.columns = ["date", "avg_fatigue"]
+
+    daily_chart = alt.Chart(daily_fatigue).mark_bar(color=ORANGE).encode(
+        x=alt.X("date:N", title="Date"),
+        y=alt.Y("avg_fatigue:Q", title="Average Fatigue"),
+        tooltip=["date", "avg_fatigue"]
+    ).properties(
+        width=800,
+        height=300
+    )
+
+    st.altair_chart(daily_chart, use_container_width=True)
+
+    # -----------------------------
+    # RAW DATA + FATIGUE ZONES TABLE
     # -----------------------------
     st.subheader("Raw Dataset With Fatigue")
     st.dataframe(df, use_container_width=True)
-
-    st.subheader("Fatigue Trend Over Time")
-    fatigue_chart = df[["timestamp", "fatigue_score"]].set_index("timestamp")
-    st.line_chart(fatigue_chart)
-
-    st.subheader("Daily Fatigue Averages")
-    daily_fatigue = df.groupby(df["timestamp"].dt.date)["fatigue_score"].mean()
-    st.bar_chart(daily_fatigue)
 
     st.subheader("Fatigue Zones Table")
     zone_table = df[["timestamp", "units", "cycle_time", "errors", "workers", "fatigue_score", "fatigue_zone"]]
