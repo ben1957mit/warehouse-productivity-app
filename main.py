@@ -381,3 +381,113 @@ if uploaded_file is not None:
     zone_table = df[["timestamp", "units", "cycle_time", "errors", "workers", "fatigue_score", "fatigue_zone"]]
     zone_table["fatigue_zone"] = zone_table["fatigue_zone"].apply(fatigue_badge)
     st.markdown(zone_table.to_html(escape=False), unsafe_allow_html=True)
+    import streamlit as st
+import requests
+import pyrebase
+
+# -------------------------------------------------
+# FIREBASE CLIENT CONFIG (Frontend Only)
+# -------------------------------------------------
+firebase_config = {
+    "apiKey": "YOUR_FIREBASE_API_KEY",
+    "authDomain": "YOUR_FIREBASE_AUTH_DOMAIN",
+    "projectId": "YOUR_FIREBASE_PROJECT_ID",
+    "storageBucket": "YOUR_FIREBASE_STORAGE_BUCKET",
+    "messagingSenderId": "YOUR_FIREBASE_SENDER_ID",
+    "appId": "YOUR_FIREBASE_APP_ID"
+}
+
+firebase = pyrebase.initialize_app(firebase_config)
+auth = firebase.auth()
+
+# Your backend URL (FastAPI)
+BACKEND_URL = "https://your-backend-url.com"
+
+
+# -------------------------------------------------
+# LOGIN UI
+# -------------------------------------------------
+def login_ui():
+    st.title("Login to Access Dashboard")
+
+    email = st.text_input("Email")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        try:
+            user = auth.sign_in_with_email_and_password(email, password)
+            id_token = user['idToken']
+
+            st.session_state["id_token"] = id_token
+            st.session_state["email"] = email
+
+            st.success("Login successful!")
+            st.experimental_rerun()
+
+        except Exception:
+            st.error("Login failed. Check your email or password.")
+
+
+# -------------------------------------------------
+# LICENSE CHECK (Calls Backend)
+# -------------------------------------------------
+def check_license():
+    if "id_token" not in st.session_state:
+        return False
+
+    try:
+        resp = requests.post(
+            f"{BACKEND_URL}/check_license",
+            headers={"Authorization": f"Bearer {st.session_state['id_token']}"}
+        )
+
+        if resp.status_code == 200:
+            return True
+        return False
+
+    except Exception:
+        return False
+
+
+# -------------------------------------------------
+# PAYWALL SCREEN
+# -------------------------------------------------
+def paywall_ui():
+    st.title("Subscription Required")
+    st.warning("Your subscription is not active. Please subscribe to continue.")
+
+    if st.button("Subscribe Now"):
+        try:
+            resp = requests.post(
+                f"{BACKEND_URL}/create_checkout_session",
+                json={"id_token": st.session_state["id_token"]}
+            )
+            checkout_url = resp.json().get("checkout_url")
+
+            st.write("Redirecting to Stripe Checkout...")
+            st.markdown(f"[Click here to subscribe]({checkout_url})")
+
+        except Exception:
+            st.error("Unable to start subscription. Contact support.")
+
+
+# -------------------------------------------------
+# GATEKEEPER LOGIC
+# -------------------------------------------------
+if "id_token" not in st.session_state:
+    login_ui()
+    st.stop()
+
+if not check_license():
+    paywall_ui()
+    st.stop()
+
+# -------------------------------------------------
+# LICENSE VERIFIED → LOAD DASHBOARD
+# -------------------------------------------------
+st.success("License verified — loading dashboard...")
+
+st.title("Warehouse Productivity Dashboard")
+
+st.write("Your full dashboard code goes below this line.")
+
