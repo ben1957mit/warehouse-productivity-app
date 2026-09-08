@@ -395,10 +395,9 @@ firebase_config = {
     "storageBucket": "YOUR_FIREBASE_STORAGE_BUCKET",
     "messagingSenderId": "YOUR_FIREBASE_SENDER_ID",
     "appId": "YOUR_FIREBASE_APP_ID",
-    "databaseURL": ""   # required by pyrebase4
+    "databaseURL": ""
 }
 
-}
 firebase = pyrebase.initialize_app(firebase_config)
 auth = firebase.auth()
 
