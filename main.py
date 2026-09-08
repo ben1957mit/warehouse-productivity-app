@@ -397,7 +397,7 @@ firebase_config = {
     "appId": "YOUR_FIREBASE_APP_ID",
     "databaseURL": ""
 }
-
+BACKEND_URL = "https://warehouse-backend.onrender.com"
 firebase = pyrebase.initialize_app(firebase_config)
 auth = firebase.auth()
 
