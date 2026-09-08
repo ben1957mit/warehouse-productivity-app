@@ -396,7 +396,7 @@ firebase_config = {
     "storageBucket": "YOUR_FIREBASE_STORAGE_BUCKET",
     "messagingSenderId": "YOUR_FIREBASE_SENDER_ID",
     "appId": "YOUR_FIREBASE_APP_ID",
-    "databaseURL": ""   # ← ADD THIS LINE HERE
+    "databaseURL": ""  
 }
 
 }
